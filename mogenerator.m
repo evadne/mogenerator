@@ -246,7 +246,10 @@ NSString  *gCustomBaseClassForced;
         } else if ([property isKindOfClass:[NSRelationshipDescription class]]) {
             entity = [property destinationEntity];
         }
-        assert(property);
+        if (!property) {
+          @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:[NSString stringWithFormat:@"Can not understand key path of type %@.", keyPath] userInfo:nil];
+          return nil;
+        }
     }
     
     return [entity managedObjectClassName];
@@ -270,7 +273,10 @@ NSString  *gCustomBaseClassForced;
             [self _processPredicate:subpredicate bindings:bindings_];
         }
     } else if ([predicate_ isKindOfClass:[NSComparisonPredicate class]]) {
-        assert([[(NSComparisonPredicate*)predicate_ leftExpression] expressionType] == NSKeyPathExpressionType);
+    
+        if (![[(NSComparisonPredicate*)predicate_ leftExpression] expressionType] == NSKeyPathExpressionType) {
+          @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:[NSString stringWithFormat:@"Can not recognize predicate %@.", predicate_] userInfo:nil];
+        }
         NSExpression *lhs = [(NSComparisonPredicate*)predicate_ leftExpression];
         NSExpression *rhs = [(NSComparisonPredicate*)predicate_ rightExpression];
         switch([rhs expressionType]) {
@@ -311,13 +317,19 @@ NSString  *gCustomBaseClassForced;
     nsenumerate ([fetchRequests allKeys], NSString, fetchRequestName) {
         NSFetchRequest *fetchRequest = [fetchRequests objectForKey:fetchRequestName];
         NSMutableArray *bindings = [NSMutableArray array];
-        [self _processPredicate:[fetchRequest predicate] bindings:bindings];
-        [result addObject:[NSDictionary dictionaryWithObjectsAndKeys:
-                           fetchRequestName, @"name",
-                           bindings, @"bindings",
-                           [NSNumber numberWithBool:[bindings count] > 0], @"hasBindings",
-                           [NSNumber numberWithBool:[fetchRequestName hasPrefix:@"one"]], @"singleResult",
-                           nil]];
+      
+        @try {
+          [self _processPredicate:[fetchRequest predicate] bindings:bindings];
+          [result addObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                             fetchRequestName, @"name",
+                             bindings, @"bindings",
+                             [NSNumber numberWithBool:[bindings count] > 0], @"hasBindings",
+                             [NSNumber numberWithBool:[fetchRequestName hasPrefix:@"one"]], @"singleResult",
+                             nil]];
+        } @catch (NSException *exception) {
+          [result addObject:exception];
+        }
+      
     }
     return result;
 }
